@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Görselleri eşit piksel bloklarına ayırıp 2-8 renkli paletle yeniden oluşturan web uygulaması."
+    />
+    <meta name="theme-color" content="#1d6f8f" />
+    <meta property="og:title" content="Piksel Palet Stüdyosu" />
+    <meta
+      property="og:description"
+      content="Görselleri seçilen piksel boyutu ve sınırlı renk paletiyle pikselleştirin."
+    />
+    <meta property="og:type" content="website" />
+    <title>Piksel Palet Stüdyosu</title>
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Pikselleştirme</p>
+          <h1>Piksel Palet Stüdyosu</h1>
+        </div>
+        <div class="status-strip" aria-live="polite">
+          <span id="imageMeta">Görsel bekleniyor</span>
+          <span id="gridMeta">-</span>
+        </div>
+      </header>
+
+      <section class="workbench">
+        <aside class="control-panel" aria-label="Pikselleştirme ayarları">
+          <label class="dropzone" id="dropzone" for="imageInput">
+            <span class="dropzone-title">Görsel seç</span>
+            <span class="dropzone-subtitle">PNG, JPG, WebP</span>
+            <input id="imageInput" type="file" accept="image/*" />
+          </label>
+
+          <div class="control-group">
+            <label class="label-row" for="blockSize">
+              <span>Piksel büyüklüğü</span>
+              <output id="blockSizeOutput" for="blockSize">16 px</output>
+            </label>
+            <input id="blockSize" type="range" min="2" max="80" step="1" value="16" />
+            <div class="scale-labels" aria-hidden="true">
+              <span>2</span>
+              <span>80</span>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="label-row">
+              <span>Renk sayısı</span>
+              <output id="colorCountOutput">4</output>
+            </div>
+            <div class="segmented" role="radiogroup" aria-label="Renk sayısı">
+              <input type="radio" id="colors2" name="colorCount" value="2" />
+              <label for="colors2">2</label>
+              <input type="radio" id="colors3" name="colorCount" value="3" />
+              <label for="colors3">3</label>
+              <input type="radio" id="colors4" name="colorCount" value="4" checked />
+              <label for="colors4">4</label>
+              <input type="radio" id="colors5" name="colorCount" value="5" />
+              <label for="colors5">5</label>
+              <input type="radio" id="colors6" name="colorCount" value="6" />
+              <label for="colors6">6</label>
+              <input type="radio" id="colors7" name="colorCount" value="7" />
+              <label for="colors7">7</label>
+              <input type="radio" id="colors8" name="colorCount" value="8" />
+              <label for="colors8">8</label>
+            </div>
+          </div>
+
+          <div class="control-group compact">
+            <label class="toggle">
+              <input id="gridToggle" type="checkbox" checked />
+              <span>Izgara</span>
+            </label>
+          </div>
+
+          <div class="control-group">
+            <div class="label-row">
+              <span>Palet</span>
+              <span id="paletteCount">0 renk</span>
+            </div>
+            <div class="palette" id="palette" aria-label="Oluşturulan renk paleti"></div>
+          </div>
+
+          <button class="download-button" id="downloadBtn" type="button" disabled>
+            PNG indir
+          </button>
+        </aside>
+
+        <section class="canvas-stage" aria-label="Görsel önizleme">
+          <article class="canvas-panel">
+            <div class="panel-header">
+              <h2>Orijinal</h2>
+              <span id="originalSize">-</span>
+            </div>
+            <div class="canvas-wrap">
+              <canvas id="originalCanvas"></canvas>
+              <div class="empty-state" id="originalEmpty">Görsel bekleniyor</div>
+            </div>
+          </article>
+
+          <article class="canvas-panel">
+            <div class="panel-header">
+              <h2>Pikselleştirilmiş</h2>
+              <span id="resultSize">-</span>
+            </div>
+            <div class="canvas-wrap result-wrap">
+              <canvas id="resultCanvas"></canvas>
+              <div class="preview-grid" aria-hidden="true"></div>
+              <div class="empty-state" id="resultEmpty">Çıktı bekleniyor</div>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

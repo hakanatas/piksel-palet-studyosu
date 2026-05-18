@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Piksel Palet Stüdyosu</title>
+  <rect width="512" height="512" rx="96" fill="#f7f5ef"/>
+  <rect x="96" y="96" width="96" height="96" fill="#1d6f8f"/>
+  <rect x="208" y="96" width="96" height="96" fill="#d95d39"/>
+  <rect x="320" y="96" width="96" height="96" fill="#2c8c6c"/>
+  <rect x="96" y="208" width="96" height="96" fill="#f4c542"/>
+  <rect x="208" y="208" width="96" height="96" fill="#8d4bbb"/>
+  <rect x="320" y="208" width="96" height="96" fill="#17202a"/>
+  <rect x="96" y="320" width="96" height="96" fill="#caa28b"/>
+  <rect x="208" y="320" width="96" height="96" fill="#65717f"/>
+  <rect x="320" y="320" width="96" height="96" fill="#ffffff"/>
+  <path d="M96 192h320M96 304h320M192 96v320M304 96v320" stroke="#17202a" stroke-opacity="0.18" stroke-width="10"/>
+</svg>
