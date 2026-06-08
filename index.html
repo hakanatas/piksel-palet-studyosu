@@ -42,6 +42,23 @@
           </label>
 
           <div class="control-group">
+            <label class="toggle">
+              <input id="physicalGridToggle" type="checkbox" checked />
+              <span>39 x 26 fiziksel ızgara</span>
+            </label>
+            <div class="grid-size-controls">
+              <label>
+                <span>Sütun</span>
+                <input id="gridColumns" type="number" min="1" max="200" value="39" />
+              </label>
+              <label>
+                <span>Satır</span>
+                <input id="gridRows" type="number" min="1" max="200" value="26" />
+              </label>
+            </div>
+          </div>
+
+          <div class="control-group free-mode-control">
             <label class="label-row" for="blockSize">
               <span>Piksel büyüklüğü</span>
               <output id="blockSizeOutput" for="blockSize">16 px</output>
@@ -94,6 +111,28 @@
           <button class="download-button" id="downloadBtn" type="button" disabled>
             PNG indir
           </button>
+
+          <div class="control-group placement-group">
+            <div class="label-row">
+              <span>Koordinat listesi</span>
+              <span id="placementCount">0 hücre</span>
+            </div>
+            <label class="toggle">
+              <input id="includeEmptyToggle" type="checkbox" />
+              <span>Boş hücreleri dahil et</span>
+            </label>
+            <textarea
+              id="placementList"
+              class="placement-list"
+              readonly
+              spellcheck="false"
+              aria-label="Koordinat ve renk listesi"
+            ></textarea>
+            <div class="button-row">
+              <button id="copyListBtn" type="button" disabled>Listeyi kopyala</button>
+              <button id="downloadListBtn" type="button" disabled>CSV indir</button>
+            </div>
+          </div>
         </aside>
 
         <section class="canvas-stage" aria-label="Görsel önizleme">
@@ -116,6 +155,8 @@
             <div class="canvas-wrap result-wrap">
               <canvas id="resultCanvas"></canvas>
               <div class="preview-grid" aria-hidden="true"></div>
+              <div class="coordinate-labels" id="coordinateLabels" aria-hidden="true"></div>
+              <div class="hover-badge" id="hoverBadge" aria-live="polite"></div>
               <div class="empty-state" id="resultEmpty">Çıktı bekleniyor</div>
             </div>
           </article>

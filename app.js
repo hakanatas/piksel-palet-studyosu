@@ -7,15 +7,25 @@ const elements = {
   dropzone: document.querySelector("#dropzone"),
   blockSize: document.querySelector("#blockSize"),
   blockSizeOutput: document.querySelector("#blockSizeOutput"),
+  physicalGridToggle: document.querySelector("#physicalGridToggle"),
+  gridColumns: document.querySelector("#gridColumns"),
+  gridRows: document.querySelector("#gridRows"),
   colorCountOutput: document.querySelector("#colorCountOutput"),
   colorInputs: document.querySelectorAll("input[name='colorCount']"),
   gridToggle: document.querySelector("#gridToggle"),
+  includeEmptyToggle: document.querySelector("#includeEmptyToggle"),
   palette: document.querySelector("#palette"),
   paletteCount: document.querySelector("#paletteCount"),
+  placementList: document.querySelector("#placementList"),
+  placementCount: document.querySelector("#placementCount"),
+  copyListBtn: document.querySelector("#copyListBtn"),
+  downloadListBtn: document.querySelector("#downloadListBtn"),
   downloadBtn: document.querySelector("#downloadBtn"),
   originalCanvas: document.querySelector("#originalCanvas"),
   resultCanvas: document.querySelector("#resultCanvas"),
   resultWrap: document.querySelector(".result-wrap"),
+  coordinateLabels: document.querySelector("#coordinateLabels"),
+  hoverBadge: document.querySelector("#hoverBadge"),
   originalEmpty: document.querySelector("#originalEmpty"),
   resultEmpty: document.querySelector("#resultEmpty"),
   imageMeta: document.querySelector("#imageMeta"),
@@ -32,9 +42,15 @@ const state = {
   naturalHeight: 0,
   fileName: "piksellestirilmis-gorsel",
   blockSize: Number(elements.blockSize.value),
+  physicalGridMode: elements.physicalGridToggle.checked,
+  gridColumns: Number(elements.gridColumns.value),
+  gridRows: Number(elements.gridRows.value),
   colorCount: 4,
   showGrid: elements.gridToggle.checked,
+  includeEmptyCells: elements.includeEmptyToggle.checked,
   currentGrid: null,
+  cellPlacements: [],
+  placementCsv: "",
   renderTimer: 0,
 };
 
@@ -46,6 +62,7 @@ const resultContext = elements.resultCanvas.getContext("2d");
 bindEvents();
 updateControlLabels();
 renderPalette([]);
+renderPlacementList();
 
 function bindEvents() {
   elements.imageInput.addEventListener("change", (event) => {
@@ -61,6 +78,21 @@ function bindEvents() {
     scheduleRender();
   });
 
+  elements.physicalGridToggle.addEventListener("change", () => {
+    state.physicalGridMode = elements.physicalGridToggle.checked;
+    updateControlLabels();
+    scheduleRender();
+  });
+
+  [elements.gridColumns, elements.gridRows].forEach((input) => {
+    input.addEventListener("input", () => {
+      state.gridColumns = clampInteger(elements.gridColumns.value, 1, 200);
+      state.gridRows = clampInteger(elements.gridRows.value, 1, 200);
+      updateControlLabels();
+      scheduleRender();
+    });
+  });
+
   elements.colorInputs.forEach((input) => {
     input.addEventListener("change", () => {
       if (!input.checked) return;
@@ -72,10 +104,17 @@ function bindEvents() {
 
   elements.gridToggle.addEventListener("change", () => {
     state.showGrid = elements.gridToggle.checked;
-    scheduleRender();
+    applyResultPreviewSize();
+  });
+
+  elements.includeEmptyToggle.addEventListener("change", () => {
+    state.includeEmptyCells = elements.includeEmptyToggle.checked;
+    renderPlacementList();
   });
 
   elements.downloadBtn.addEventListener("click", downloadResult);
+  elements.copyListBtn.addEventListener("click", copyPlacementList);
+  elements.downloadListBtn.addEventListener("click", downloadPlacementList);
 
   ["dragenter", "dragover"].forEach((eventName) => {
     elements.dropzone.addEventListener(eventName, (event) => {
@@ -99,6 +138,9 @@ function bindEvents() {
   });
 
   window.addEventListener("resize", applyResultPreviewSize);
+
+  elements.resultWrap.addEventListener("mousemove", updateHoverBadge);
+  elements.resultWrap.addEventListener("mouseleave", hideHoverBadge);
 
   if ("ResizeObserver" in window) {
     const resultResizeObserver = new ResizeObserver(applyResultPreviewSize);
@@ -162,13 +204,12 @@ function scheduleRender() {
 function processImage() {
   const width = state.sourceWidth;
   const height = state.sourceHeight;
-  const blockSize = state.blockSize;
-  const grid = getGridSize(width, height, blockSize);
+  const grid = getActiveGrid(width, height);
   state.currentGrid = grid;
 
   setStatus(getImageMetaText(), "İşleniyor");
 
-  const blocks = collectBlocks(state.sourceData.data, width, height, blockSize, grid);
+  const blocks = collectBlocks(state.sourceData.data, width, height, grid);
   const palette = createPalette(blocks, state.colorCount);
 
   elements.resultCanvas.width = grid.outputWidth;
@@ -183,30 +224,27 @@ function processImage() {
   showCanvas(elements.resultCanvas, elements.resultEmpty);
   applyResultPreviewSize();
   renderPalette(colorUsage);
+  updatePlacements(blocks, palette);
   updateResultMeta(colorUsage, grid);
   elements.downloadBtn.disabled = colorUsage.length === 0;
 }
 
-function collectBlocks(data, width, height, blockSize, grid) {
+function collectBlocks(data, width, height, grid) {
   const blocks = [];
 
   for (let row = 0; row < grid.rows; row += 1) {
-    const y = row * blockSize;
-    const sampleHeight = Math.min(blockSize, height - y);
-
     for (let column = 0; column < grid.columns; column += 1) {
-      const x = column * blockSize;
-      const sampleWidth = Math.min(blockSize, width - x);
+      const sample = getSampleBounds(column, row, width, height, grid);
       let weightedRed = 0;
       let weightedGreen = 0;
       let weightedBlue = 0;
       let alphaWeight = 0;
       let alphaTotal = 0;
 
-      for (let yy = 0; yy < sampleHeight; yy += 1) {
-        const rowStart = ((y + yy) * width + x) * 4;
+      for (let yy = 0; yy < sample.height; yy += 1) {
+        const rowStart = ((sample.y + yy) * width + sample.x) * 4;
 
-        for (let xx = 0; xx < sampleWidth; xx += 1) {
+        for (let xx = 0; xx < sample.width; xx += 1) {
           const index = rowStart + xx * 4;
           const alpha = data[index + 3] / 255;
           alphaTotal += data[index + 3];
@@ -217,15 +255,17 @@ function collectBlocks(data, width, height, blockSize, grid) {
         }
       }
 
-      const area = sampleWidth * sampleHeight;
+      const area = sample.width * sample.height;
       const averageAlpha = Math.round(alphaTotal / area);
       const hasVisiblePixels = alphaWeight > 0.01;
 
       blocks.push({
-        x,
-        y,
-        width: blockSize,
-        height: blockSize,
+        column,
+        row,
+        x: column * grid.cellSize,
+        y: row * grid.cellSize,
+        width: grid.cellSize,
+        height: grid.cellSize,
         area,
         r: hasVisiblePixels ? Math.round(weightedRed / alphaWeight) : 255,
         g: hasVisiblePixels ? Math.round(weightedGreen / alphaWeight) : 255,
@@ -441,13 +481,79 @@ function renderPalette(palette) {
   }
 }
 
+function updatePlacements(blocks, palette) {
+  state.cellPlacements = blocks.map((block) => {
+    if (block.a <= 16 || !palette.length) {
+      return {
+        x: block.column + 1,
+        y: block.row + 1,
+        color: "boş",
+        hex: "",
+        empty: true,
+      };
+    }
+
+    const color = palette[findNearestColorIndex(block, palette)];
+    const hex = rgbToHex(color).toUpperCase();
+
+    return {
+      x: block.column + 1,
+      y: block.row + 1,
+      color: hex,
+      hex,
+      empty: false,
+    };
+  });
+
+  renderPlacementList();
+}
+
+function renderPlacementList() {
+  const placements = state.includeEmptyCells
+    ? state.cellPlacements
+    : state.cellPlacements.filter((cell) => !cell.empty);
+  const maxListSize = 5_000;
+
+  if (!state.cellPlacements.length) {
+    state.placementCsv = "";
+    elements.placementList.value = "";
+    elements.placementCount.textContent = "0 hücre";
+    elements.copyListBtn.disabled = true;
+    elements.downloadListBtn.disabled = true;
+    return;
+  }
+
+  if (placements.length > maxListSize) {
+    state.placementCsv = "";
+    elements.placementList.value =
+      `Liste ${placements.length.toLocaleString("tr-TR")} hücre içeriyor. ` +
+      "CSV için daha küçük bir ızgara kullanın.";
+    elements.placementCount.textContent = `${placements.length.toLocaleString("tr-TR")} hücre`;
+    elements.copyListBtn.disabled = true;
+    elements.downloadListBtn.disabled = true;
+    return;
+  }
+
+  state.placementCsv = [
+    "x,y,renk",
+    ...placements.map((cell) => `${cell.x},${cell.y},${cell.color}`),
+  ].join("\n");
+
+  elements.placementList.value = state.placementCsv;
+  elements.placementCount.textContent = `${placements.length.toLocaleString("tr-TR")} hücre`;
+  elements.copyListBtn.disabled = placements.length === 0;
+  elements.downloadListBtn.disabled = placements.length === 0;
+}
+
 function updateResultMeta(colorUsage, grid) {
   const visiblePieces = colorUsage.reduce((total, color) => total + color.count, 0);
 
-  elements.resultSize.textContent = formatSize(grid.outputWidth, grid.outputHeight);
+  elements.resultSize.textContent = state.physicalGridMode
+    ? `${grid.columns} x ${grid.rows} hücre`
+    : formatSize(grid.outputWidth, grid.outputHeight);
   setStatus(
     getImageMetaText(),
-    `${grid.columns} x ${grid.rows} eşit blok, ${visiblePieces.toLocaleString("tr-TR")} renkli parça, ${colorUsage.length} renk`,
+    `${grid.columns} x ${grid.rows} eşit blok, ${visiblePieces.toLocaleString("tr-TR")} renkli hücre, ${colorUsage.length} renk`,
   );
 }
 
@@ -470,10 +576,77 @@ function applyResultPreviewSize() {
     `${state.currentGrid.rows * displayCellSize}px`,
   );
   elements.resultWrap.style.setProperty("--preview-cell-size", `${displayCellSize}px`);
+  elements.resultWrap.style.setProperty(
+    "--coordinate-font-size",
+    `${Math.max(7, Math.min(10, Math.floor(displayCellSize * 0.45)))}px`,
+  );
   elements.resultWrap.classList.toggle(
     "show-preview-grid",
     state.showGrid && elements.resultCanvas.classList.contains("is-visible"),
   );
+  elements.resultWrap.classList.toggle(
+    "show-coordinate-labels",
+    state.physicalGridMode && elements.resultCanvas.classList.contains("is-visible"),
+  );
+  renderCoordinateLabels(displayCellSize);
+}
+
+function renderCoordinateLabels(cellSize) {
+  elements.coordinateLabels.replaceChildren();
+
+  if (!state.currentGrid || !state.physicalGridMode) return;
+
+  for (let column = 0; column < state.currentGrid.columns; column += 1) {
+    const label = document.createElement("span");
+    label.className = "coord-label coord-label-x";
+    label.style.left = `${column * cellSize + cellSize / 2}px`;
+    label.textContent = String(column + 1);
+    elements.coordinateLabels.append(label);
+  }
+
+  for (let row = 0; row < state.currentGrid.rows; row += 1) {
+    const label = document.createElement("span");
+    label.className = "coord-label coord-label-y";
+    label.style.top = `${row * cellSize + cellSize / 2}px`;
+    label.textContent = String(row + 1);
+    elements.coordinateLabels.append(label);
+  }
+}
+
+function updateHoverBadge(event) {
+  if (!state.currentGrid || !elements.resultCanvas.classList.contains("is-visible")) return;
+
+  const rect = elements.resultCanvas.getBoundingClientRect();
+  const isInside =
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom;
+
+  if (!isInside) {
+    hideHoverBadge();
+    return;
+  }
+
+  const column = Math.min(
+    state.currentGrid.columns - 1,
+    Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * state.currentGrid.columns)),
+  );
+  const row = Math.min(
+    state.currentGrid.rows - 1,
+    Math.max(0, Math.floor(((event.clientY - rect.top) / rect.height) * state.currentGrid.rows)),
+  );
+  const placement = state.cellPlacements[row * state.currentGrid.columns + column];
+  const colorText = placement?.empty ? "boş" : placement?.color ?? "-";
+
+  elements.hoverBadge.innerHTML = `x:${column + 1} y:${row + 1}<br>${colorText}`;
+  elements.hoverBadge.style.left = `${event.clientX - elements.resultWrap.getBoundingClientRect().left + 12}px`;
+  elements.hoverBadge.style.top = `${event.clientY - elements.resultWrap.getBoundingClientRect().top + 12}px`;
+  elements.hoverBadge.classList.add("is-visible");
+}
+
+function hideHoverBadge() {
+  elements.hoverBadge.classList.remove("is-visible");
 }
 
 function getAvailablePreviewSize(container) {
@@ -489,6 +662,15 @@ function getAvailablePreviewSize(container) {
 }
 
 function updateControlLabels() {
+  state.gridColumns = clampInteger(elements.gridColumns.value, 1, 200);
+  state.gridRows = clampInteger(elements.gridRows.value, 1, 200);
+  elements.gridColumns.value = String(state.gridColumns);
+  elements.gridRows.value = String(state.gridRows);
+  elements.blockSize.disabled = state.physicalGridMode;
+  elements.blockSize.closest(".free-mode-control").classList.toggle(
+    "is-disabled",
+    state.physicalGridMode,
+  );
   elements.blockSizeOutput.textContent = `${state.blockSize} px`;
   elements.colorCountOutput.textContent = String(state.colorCount);
 }
@@ -524,20 +706,65 @@ function getProcessSize(width, height) {
   };
 }
 
-function getGridSize(width, height, blockSize) {
-  const columns = Math.ceil(width / blockSize);
-  const rows = Math.ceil(height / blockSize);
+function getActiveGrid(width, height) {
+  if (state.physicalGridMode) {
+    return {
+      mode: "physical",
+      columns: state.gridColumns,
+      rows: state.gridRows,
+      cellSize: 1,
+      outputWidth: state.gridColumns,
+      outputHeight: state.gridRows,
+    };
+  }
+
+  const columns = Math.ceil(width / state.blockSize);
+  const rows = Math.ceil(height / state.blockSize);
 
   return {
+    mode: "free",
     columns,
     rows,
-    outputWidth: columns * blockSize,
-    outputHeight: rows * blockSize,
+    cellSize: state.blockSize,
+    outputWidth: columns * state.blockSize,
+    outputHeight: rows * state.blockSize,
+  };
+}
+
+function getSampleBounds(column, row, width, height, grid) {
+  if (grid.mode === "physical") {
+    const x = Math.floor((column * width) / grid.columns);
+    const y = Math.floor((row * height) / grid.rows);
+    const nextX = Math.floor(((column + 1) * width) / grid.columns);
+    const nextY = Math.floor(((row + 1) * height) / grid.rows);
+
+    return {
+      x,
+      y,
+      width: Math.max(1, Math.min(width - x, nextX - x || 1)),
+      height: Math.max(1, Math.min(height - y, nextY - y || 1)),
+    };
+  }
+
+  const x = column * grid.cellSize;
+  const y = row * grid.cellSize;
+
+  return {
+    x,
+    y,
+    width: Math.max(1, Math.min(grid.cellSize, width - x)),
+    height: Math.max(1, Math.min(grid.cellSize, height - y)),
   };
 }
 
 function formatSize(width, height) {
   return `${width.toLocaleString("tr-TR")} x ${height.toLocaleString("tr-TR")} px`;
+}
+
+function clampInteger(value, min, max) {
+  const number = Number.parseInt(value, 10);
+  if (!Number.isFinite(number)) return min;
+  return Math.min(max, Math.max(min, number));
 }
 
 function rgbToHex(color) {
@@ -555,12 +782,48 @@ function downloadResult() {
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.href = url;
-    link.download = `${slugify(state.fileName)}-${state.blockSize}px-${state.colorCount}renk.png`;
+    const gridPart = state.physicalGridMode
+      ? `${state.gridColumns}x${state.gridRows}`
+      : `${state.blockSize}px`;
+    link.download = `${slugify(state.fileName)}-${gridPart}-${state.colorCount}renk.png`;
     document.body.append(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
   }, "image/png");
+}
+
+async function copyPlacementList() {
+  if (!state.placementCsv) return;
+
+  try {
+    await navigator.clipboard.writeText(state.placementCsv);
+    elements.copyListBtn.textContent = "Kopyalandı";
+    window.setTimeout(() => {
+      elements.copyListBtn.textContent = "Listeyi kopyala";
+    }, 1400);
+  } catch (error) {
+    elements.placementList.select();
+    document.execCommand("copy");
+  }
+}
+
+function downloadPlacementList() {
+  if (!state.placementCsv) return;
+
+  const blob = new Blob([state.placementCsv], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  const gridPart = state.physicalGridMode
+    ? `${state.gridColumns}x${state.gridRows}`
+    : `${state.currentGrid?.columns ?? 0}x${state.currentGrid?.rows ?? 0}`;
+
+  link.href = url;
+  link.download = `${slugify(state.fileName)}-${gridPart}-koordinatlar.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function createDrawableImage(file) {
