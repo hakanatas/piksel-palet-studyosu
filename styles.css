@@ -465,6 +465,7 @@ canvas {
 .result-wrap canvas {
   max-width: none;
   max-height: none;
+  cursor: pointer;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }

@@ -50,6 +50,7 @@ const state = {
   includeEmptyCells: elements.includeEmptyToggle.checked,
   currentGrid: null,
   cellPlacements: [],
+  editPalette: [],
   placementCsv: "",
   renderTimer: 0,
 };
@@ -141,6 +142,7 @@ function bindEvents() {
 
   elements.resultWrap.addEventListener("mousemove", updateHoverBadge);
   elements.resultWrap.addEventListener("mouseleave", hideHoverBadge);
+  elements.resultCanvas.addEventListener("click", cycleCellColor);
 
   if ("ResizeObserver" in window) {
     const resultResizeObserver = new ResizeObserver(applyResultPreviewSize);
@@ -223,6 +225,7 @@ function processImage() {
 
   showCanvas(elements.resultCanvas, elements.resultEmpty);
   applyResultPreviewSize();
+  state.editPalette = colorUsage.map(({ count, ...color }) => color);
   renderPalette(colorUsage);
   updatePlacements(blocks, palette);
   updateResultMeta(colorUsage, grid);
@@ -616,30 +619,17 @@ function renderCoordinateLabels(cellSize) {
 function updateHoverBadge(event) {
   if (!state.currentGrid || !elements.resultCanvas.classList.contains("is-visible")) return;
 
-  const rect = elements.resultCanvas.getBoundingClientRect();
-  const isInside =
-    event.clientX >= rect.left &&
-    event.clientX <= rect.right &&
-    event.clientY >= rect.top &&
-    event.clientY <= rect.bottom;
+  const cell = getCellFromPointer(event);
 
-  if (!isInside) {
+  if (!cell) {
     hideHoverBadge();
     return;
   }
 
-  const column = Math.min(
-    state.currentGrid.columns - 1,
-    Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * state.currentGrid.columns)),
-  );
-  const row = Math.min(
-    state.currentGrid.rows - 1,
-    Math.max(0, Math.floor(((event.clientY - rect.top) / rect.height) * state.currentGrid.rows)),
-  );
-  const placement = state.cellPlacements[row * state.currentGrid.columns + column];
+  const placement = state.cellPlacements[cell.row * state.currentGrid.columns + cell.column];
   const colorText = placement?.empty ? "boş" : placement?.color ?? "-";
 
-  elements.hoverBadge.innerHTML = `x:${column + 1} y:${row + 1}<br>${colorText}`;
+  elements.hoverBadge.innerHTML = `x:${cell.column + 1} y:${cell.row + 1}<br>${colorText}`;
   elements.hoverBadge.style.left = `${event.clientX - elements.resultWrap.getBoundingClientRect().left + 12}px`;
   elements.hoverBadge.style.top = `${event.clientY - elements.resultWrap.getBoundingClientRect().top + 12}px`;
   elements.hoverBadge.classList.add("is-visible");
@@ -647,6 +637,86 @@ function updateHoverBadge(event) {
 
 function hideHoverBadge() {
   elements.hoverBadge.classList.remove("is-visible");
+}
+
+function cycleCellColor(event) {
+  if (!state.currentGrid || !state.editPalette.length) return;
+
+  const cell = getCellFromPointer(event);
+  if (!cell) return;
+
+  const index = cell.row * state.currentGrid.columns + cell.column;
+  const placement = state.cellPlacements[index];
+  const currentIndex = placement?.empty
+    ? -1
+    : state.editPalette.findIndex((color) => rgbToHex(color).toUpperCase() === placement.color);
+  const nextColor = state.editPalette[(currentIndex + 1) % state.editPalette.length];
+  const nextHex = rgbToHex(nextColor).toUpperCase();
+
+  state.cellPlacements[index] = {
+    x: cell.column + 1,
+    y: cell.row + 1,
+    color: nextHex,
+    hex: nextHex,
+    empty: false,
+  };
+
+  drawEditedCell(cell.column, cell.row, nextHex);
+  syncManualEdits();
+  updateHoverBadge(event);
+}
+
+function getCellFromPointer(event) {
+  const rect = elements.resultCanvas.getBoundingClientRect();
+  const isInside =
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom;
+
+  if (!isInside) return null;
+
+  return {
+    column: Math.min(
+      state.currentGrid.columns - 1,
+      Math.max(
+        0,
+        Math.floor(((event.clientX - rect.left) / rect.width) * state.currentGrid.columns),
+      ),
+    ),
+    row: Math.min(
+      state.currentGrid.rows - 1,
+      Math.max(
+        0,
+        Math.floor(((event.clientY - rect.top) / rect.height) * state.currentGrid.rows),
+      ),
+    ),
+  };
+}
+
+function drawEditedCell(column, row, hex) {
+  const size = state.currentGrid.cellSize;
+  resultContext.fillStyle = hex;
+  resultContext.fillRect(column * size, row * size, size, size);
+}
+
+function syncManualEdits() {
+  const colorUsage = buildColorUsageFromPlacements();
+  renderPalette(colorUsage.filter((color) => color.count > 0));
+  renderPlacementList();
+  updateResultMeta(colorUsage.filter((color) => color.count > 0), state.currentGrid);
+}
+
+function buildColorUsageFromPlacements() {
+  return state.editPalette.map((color) => {
+    const hex = rgbToHex(color).toUpperCase();
+    const count = state.cellPlacements.filter((cell) => !cell.empty && cell.color === hex).length;
+
+    return {
+      ...color,
+      count,
+    };
+  });
 }
 
 function getAvailablePreviewSize(container) {

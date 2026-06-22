@@ -45,6 +45,7 @@ Sonra `http://127.0.0.1:5173` adresini açın.
 - 39 x 26 fiziksel ızgara modu
 - Dinamik sütun/satır ayarı
 - Izgara üzerinde koordinat ve renk gösteren hover bilgisi
+- Sağdaki ızgarada tıklayarak hücre rengini paletteki sonraki renge çevirme
 - Izgara dışında sütun ve satır numaraları
 - `(x,y,renk)` formatında kopyalanabilir ve indirilebilir koordinat listesi
 - 2-80 px arası blok boyutu
